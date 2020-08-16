@@ -1,0 +1,15 @@
+# Build Directory
+build/*
+
+# VScode
+.vscode/*
+compile_commands.json
+.ccls
+compile_flags.txt
+.clangd
+
+# Outfiles
+a.out
+*.o
+*.s
+*.ll
