@@ -5,5 +5,4 @@
 MY_PATH="`dirname \"$0\"`"
 cd "$MY_PATH"
 
-$CLANG8 test.c -O3 -S -emit-llvm \
-    -Xclang -load -Xclang ../build/src/libLLVMTargetClones.so
+$CLANG8 test.c -S -emit-llvm -fplugin=../build/src/libLLVMTargetClones.so

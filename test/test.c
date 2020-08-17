@@ -1,4 +1,7 @@
-__attribute__((annotate("async"))) int min(int a, int b) { return a < b ? a : b; }
+// __attribute__((target("sse4.2"))) int min(int a, int b) { return a < b ? a : b; }
+
+__attribute__((annotate("targetclone"))) int min(int a, int b) { return a < b ? a : b; }
+int max(int a, int b) { return a > b ? a : b; }
 
 // #pragma enable_annotate
 // static inline void my_min_impl(int *a, int *b, int *c, int n) {
