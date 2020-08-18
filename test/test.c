@@ -1,60 +1,30 @@
-// __attribute__((target("sse4.2"))) int min(int a, int b) { return a < b ? a : b; }
-
-__attribute__((annotate("targetclone"))) int min(int a, int b) { return a < b ? a : b; }
+int min(int a, int b) { return a < b ? a : b; }
 int max(int a, int b) { return a > b ? a : b; }
 
-// #pragma enable_annotate
-// static inline void my_min_impl(int *a, int *b, int *c, int n) {
-//   int i;
-//   for (i = 0; i < n; i++) {
-//     a[i] = (b[i] < c[i]) ? b[i] : c[i];
-//   }
+__attribute__((annotate("targetclone"))) void my_min(int *a, const int *b, const int *c, int n) {
+  int i;
+  for (i = 0; i < n; i++) {
+    a[i] = (b[i] < c[i]) ? b[i] : c[i];
+  }
+}
+
+// #include <inttypes.h>
+
+// typedef uint64_t uint64;
+// typedef int64_t int64;
+// typedef uint64 rowcnt_t;
+// typedef uint64 *selvec_t;
+// typedef int64 index_t;
+
+// rowcnt_t SelectValidBuckets(rowcnt_t selrows, selvec_t srcSelvec, selvec_t dstSelvec,
+//                             uint64 *entryIdArr) {
+//     rowcnt_t numValid = 0;
+
+//     for (index_t i = 0; i < selrows; i++) {
+//         index_t ind = srcSelvec[i];
+//         dstSelvec[numValid] = ind;
+//         numValid += (entryIdArr[ind] != 0);
+//     }
+
+//     return numValid;
 // }
-
-// static inline void my_min_targetted(int *a, int *b, int *c, int n) { my_min_impl(a, b, c, n); }
-
-// void my_min(int *a, int *b, int *c, int n) { my_min_targetted(a, b, c, n); }
-
-// #pragma enable_annotate
-// __attribute__((target("avx512f"))) int max(int a, int b, int c) {
-//   return a > b ? (a > c ? a : c) : b;
-// }
-
-// #pragma enable_annotate
-// __attribute__((target("default"))) int max(int a, int b, int c) {
-//   return a > b ? (a > c ? a : c) : b;
-// }
-
-// void my_min(int *a, int *b, int *c, int n) {
-//   int i;
-//   for (i = 0; i < n; i++) {
-//     a[i] = (b[i] < c[i]) ? b[i] : c[i];
-//   }
-// }
-
-// #if defined(__cplusplus) && __cplusplus >= 201103L
-// #define TARGET(arch) [[gnu::target(#arch)]]
-// #else
-// #define TARGET(arch) __attribute__((target(#arch)))
-// #endif
-
-// static inline void my_min_impl(int *a, int *b, int *c, int n) {
-//   int i;
-//   for (i = 0; i < n; i++) {
-//     a[i] = (b[i] < c[i]) ? b[i] : c[i];
-//   }
-// }
-
-// TARGET(avx512f)
-// static inline void my_min_targetted(int *a, int *b, int *c, int n) { my_min_impl(a, b, c, n); }
-
-// TARGET(avx2)
-// static inline void my_min_targetted(int *a, int *b, int *c, int n) { my_min_impl(a, b, c, n); }
-
-// TARGET(avx)
-// static inline void my_min_targetted(int *a, int *b, int *c, int n) { my_min_impl(a, b, c, n); }
-
-// TARGET(default)
-// static inline void my_min_targetted(int *a, int *b, int *c, int n) { my_min_impl(a, b, c, n); }
-
-// void my_min(int *a, int *b, int *c, int n) { my_min_targetted(a, b, c, n); }
