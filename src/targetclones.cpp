@@ -96,7 +96,8 @@ public:
   TargetClone() : ModulePass(ID) {}
 
   auto runOnModule(Module &M) -> bool override {
-    for (auto *F : getClonableFunctions(M)) {
+    auto ClonableFunctions = getClonableFunctions(M);
+    for (auto *F : ClonableFunctions) {
       SmallVector<TargetFunctionPair, NUM_TARGETS> TargetFunctions;
 
       for (const auto &Target : TARGETS) {
@@ -114,7 +115,7 @@ public:
 #ifndef NDEBUG
     verifyModule(M, &errs());
 #endif
-    return true;
+    return !ClonableFunctions.empty();
   }
 
 private:
