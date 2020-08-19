@@ -5,6 +5,8 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IRReader/IRReader.h>
+#include <llvm/Linker/Linker.h>
 #include <llvm/Pass.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
@@ -53,6 +55,7 @@ enum class TargetID : unsigned {
 #define X86_CPU_SUBTYPE_COMPAT(ARCHNAME, ENUM, STR) ENUM,
 #include <llvm/Support/X86TargetParser.def>
 };
+
 struct Target {
   TargetID ID;
   std::string_view Name;
@@ -62,6 +65,10 @@ std::array TARGETS = {
 // NOLINTNEXTLINE
 #define X86_CPU_SUBTYPE_COMPAT(ARCHNAME, ENUM, STR) Target{TargetID::ENUM, STR},
 #include <llvm/Support/X86TargetParser.def>
+};
+
+constexpr std::array CPU_MODEL_BC = {
+#include "cpumodel.bc.h"
 };
 
 constexpr auto NUM_TARGETS = TARGETS.size();
@@ -85,8 +92,10 @@ constexpr auto is64Bit(TargetID ID) -> bool {
 }
 
 #ifndef NDEBUG
-void Dump(Value &V) { V.print(outs()); }
-void Dump(Module &M) { M.print(outs(), nullptr); }
+LLVM_ATTRIBUTE_UNUSED
+void Dump(const Value &V) { V.print(outs()); }
+LLVM_ATTRIBUTE_UNUSED
+void Dump(const Module &M) { M.print(outs(), nullptr); }
 #endif
 
 class TargetClone : public ModulePass {
@@ -96,6 +105,8 @@ public:
   TargetClone() : ModulePass(ID) {}
 
   auto runOnModule(Module &M) -> bool override {
+    injectCpuModelUtils(M);
+
     auto ClonableFunctions = getClonableFunctions(M);
     for (auto *F : ClonableFunctions) {
       SmallVector<TargetFunctionPair, NUM_TARGETS> TargetFunctions;
@@ -194,7 +205,7 @@ private:
     FunctionSet Functions;
     if (const auto *global_annos = M.getNamedGlobal("llvm.global.annotations")) {
       auto *AnnoArray = cast<ConstantArray>(global_annos->getOperand(0));
-      for (int i = 0; i < AnnoArray->getNumOperands(); i++) {
+      for (unsigned i = 0; i < AnnoArray->getNumOperands(); i++) {
         auto *e = cast<ConstantStruct>(AnnoArray->getOperand(i));
 
         if (auto *F = dyn_cast<Function>(e->getOperand(0)->getOperand(0))) {
@@ -212,9 +223,6 @@ private:
   static void emitMultiVersionResolver(Function &F, IRBuilder<> &Builder,
                                        ArrayRef<TargetFunctionPair> TargetFunctions,
                                        Function &Default) {
-    emitX86CpuInit(*F.getParent(), Builder);
-    uint64_t FeaturesMask = 0;
-
     SmallVector<Value *, 10> Args; // NOLINT
     for (auto &&Arg : F.args()) {
       Args.push_back(&cast<Value>(Arg));
@@ -283,44 +291,24 @@ private:
 
     V.setDSOLocal(true);
     V.setLinkage(Function::ExternalLinkage);
+    V.setDLLStorageClass(GlobalValue::DefaultStorageClass);
 
     return V;
   }
 
-  static void emitX86CpuInit(Module &M, IRBuilder<> &Builder) {
-    auto *FTy = FunctionType::get(Builder.getVoidTy(), /*Variadic*/ false);
-    auto &Func = createGlobalFunction(M, "__cpu_indicator_init", FTy);
-    Builder.CreateCall(&Func);
+  static auto getCpuModel(Module &M) -> GlobalVariable & {
+    return *M.getGlobalVariable("target_clone_cpu_model", true);
   }
 
-  static auto getCpuModel(Module &M, IRBuilder<> &B) -> Constant & {
-    auto &Int32Ty = *B.getInt32Ty();
-
-    // Matching the struct layout from the compiler-rt/libgcc structure that is
-    // filled in:
-    // unsigned int __cpu_vendor;
-    // unsigned int __cpu_type;
-    // unsigned int __cpu_subtype;
-    // unsigned int __cpu_features[1];
-    auto &STy = *StructType::get(&Int32Ty, &Int32Ty, &Int32Ty, ArrayType::get(&Int32Ty, 1));
-
-    // Grab the global __cpu_model.
-    auto &CpuModel = createGlobalVariable(M, "__cpu_model", &STy);
-    return *cast<Constant>(&CpuModel);
-  }
-
-  static auto getCpuFeatures2(Module &M, IRBuilder<> &B) -> Constant & {
-    auto &Int32Ty = *B.getInt32Ty();
-    // Grab the global __cpu_features2.
-    auto &CpuFeatures2 = createGlobalVariable(M, "__cpu_features2", &Int32Ty);
-    return *cast<Constant>(&CpuFeatures2);
+  static auto getCpuFeatures2(Module &M) -> GlobalVariable & {
+    return *M.getGlobalVariable("target_clone_cpu_features2", true);
   }
 
   static void getCPUSpecificFeatures(std::string_view Name, SmallVectorImpl<StringRef> &Features) {
     StringRef WholeList = StringSwitch<StringRef>(cpuSpecificNameDealias(Name))
     // NOLINTNEXTLINE
 #define CPU_SPECIFIC(NAME, MANGLING, FEATURES) .Case(NAME, FEATURES)
-#include <clang/Basic/X86Target.def>
+#include "X86Target.def"
                               .Default("");
     WholeList.split(Features, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
   }
@@ -329,7 +317,7 @@ private:
     return StringSwitch<StringRef>(to_strref(Name))
     // NOLINTNEXTLINE
 #define CPU_SPECIFIC_ALIAS(NEW_NAME, NAME) .Case(NEW_NAME, NAME)
-#include <clang/Basic/X86Target.def>
+#include "X86Target.def"
         .Default(to_strref(Name));
   }
 
@@ -355,7 +343,7 @@ private:
     assert(Value != 0 && "Invalid CPUStr passed to CpuIs");
 
     // Grab the appropriate field from __cpu_model.
-    auto &CpuModel = getCpuModel(M, Builder);
+    auto &CpuModel = getCpuModel(M);
     auto *Int32Ty = Builder.getInt32Ty();
     std::array<llvm::Value *, 2> Idxs = {ConstantInt::get(Int32Ty, 0),
                                          ConstantInt::get(Int32Ty, Index)};
@@ -365,6 +353,12 @@ private:
 
     // Check the value of the field against the requested value.
     return *Builder.CreateICmpEQ(CpuValue, ConstantInt::get(Int32Ty, Value));
+  }
+
+  static void injectCpuModelUtils(Module &M) {
+    SMDiagnostic error;
+    auto Buffer = MemoryBuffer::getMemBuffer(StringRef(CPU_MODEL_BC.data(), CPU_MODEL_BC.size()));
+    Linker::linkModules(M, parseIR(*Buffer, error, M.getContext()));
   }
 };
 } // namespace

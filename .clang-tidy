@@ -1,5 +1,5 @@
 ---
-Checks:          'clang-diagnostic-*,clang-analyzer-*,-*,clang-analyzer-*,boost-*,bugprone-*,cppcoreguidelines-*,cert-*,hicpp-*,modernize-*,performance-*,portability-*,readability-*,misc-*,-hicpp-no-array-decay,-cppcoreguidelines-pro-bounds-array-to-pointer-decay,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-pro-type-member-init,-hicpp-member-init,-cppcoreguidelines-init-variables,-cppcoreguidelines-pro-type-union-access'
+Checks:          'clang-diagnostic-*,clang-analyzer-*,clang-diagnostic-*,clang-analyzer-*,-*,clang-analyzer-*,boost-*,bugprone-*,cppcoreguidelines-*,cert-*,hicpp-*,modernize-*,performance-*,portability-*,readability-*,misc-*,-hicpp-no-array-decay,-cppcoreguidelines-pro-bounds-array-to-pointer-decay,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-pro-type-member-init,-hicpp-member-init,-cppcoreguidelines-init-variables,-cppcoreguidelines-pro-type-union-access,-cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers'
 WarningsAsErrors: ''
 HeaderFilterRegex: ''
 AnalyzeTemporaryDtors: false
@@ -92,10 +92,6 @@ CheckOptions:
     value:           llvm
   - key:             cert-oop54-cpp.WarnOnlyIfThisHasSuspiciousField
     value:           '0'
-  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoredFloatingPointValues
-    value:           '1.0;100.0;'
-  - key:             cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
-    value:           '1;2;3;4;'
   - key:             cppcoreguidelines-explicit-virtual-functions.AllowOverrideAndFinal
     value:           '0'
   - key:             cppcoreguidelines-explicit-virtual-functions.FinalSpelling
@@ -340,10 +336,6 @@ CheckOptions:
     value:           '1'
   - key:             readability-inconsistent-declaration-parameter-name.Strict
     value:           '0'
-  - key:             readability-magic-numbers.IgnoredFloatingPointValues
-    value:           '1.0;100.0;'
-  - key:             readability-magic-numbers.IgnoredIntegerValues
-    value:           '1;2;3;4;'
   - key:             readability-redundant-member-init.IgnoreBaseInCopyConstructors
     value:           '0'
   - key:             readability-redundant-smartptr-get.IgnoreMacros
