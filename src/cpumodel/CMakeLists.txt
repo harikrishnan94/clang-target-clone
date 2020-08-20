@@ -8,7 +8,11 @@ else()
     message(FATAL_ERROR "Can't found program: clang")
 endif()
 
-set(BC_CXXFLAGS -std=c++17 -O3 -fno-rtti -c -emit-llvm -fPIC)
+if(WIN32)
+    set(BC_CXXFLAGS -std=c++17 -O3 -fno-rtti -c -emit-llvm)
+else()
+    set(BC_CXXFLAGS -std=c++17 -O3 -fno-rtti -c -emit-llvm -fPIC)
+endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(BC_CXXFLAGS ${BC_CXXFLAGS} -DNDEBUG)

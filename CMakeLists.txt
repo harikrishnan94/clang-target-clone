@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 3.16)
-
+cmake_minimum_required(VERSION 3.15)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(
-    cmake-target-clones
-    VERSION 0.1.0
-    DESCRIPTION "Clang Target Clone implementation similar to GCC"
-    LANGUAGES CXX)
+  cmake-target-clones
+  VERSION 0.1.0
+  DESCRIPTION "Clang Target Clone implementation similar to GCC"
+  LANGUAGES CXX)
 
 enable_testing()
 

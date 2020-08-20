@@ -18,15 +18,15 @@
 #include <tuple>
 #include <vector>
 
-#include <unistd.h>
+// #include <unistd.h>
 
 using namespace llvm;
 
-#define DEBUG_WAIT()                                                                               \
-  do {                                                                                             \
-    errs() << getpid() << "\n";                                                                    \
-    sleep(10);                                                                                     \
-  } while (0)
+// #define DEBUG_WAIT()                                                                               \
+//   do {                                                                                             \
+//     errs() << getpid() << "\n";                                                                    \
+//     sleep(10);                                                                                     \
+//   } while (0)
 
 namespace {
 inline auto to_strref(std::string_view str) -> StringRef { return {str.data(), str.length()}; }
@@ -67,7 +67,7 @@ std::array TARGETS = {
 #include <llvm/Support/X86TargetParser.def>
 };
 
-constexpr std::array CPU_MODEL_BC = {
+const char CPU_MODEL_BC[] = {
 #include "cpumodel.bc.h"
 };
 
@@ -357,7 +357,7 @@ private:
 
   static void injectCpuModelUtils(Module &M) {
     SMDiagnostic error;
-    auto Buffer = MemoryBuffer::getMemBuffer(StringRef(CPU_MODEL_BC.data(), CPU_MODEL_BC.size()));
+    auto Buffer = MemoryBuffer::getMemBuffer(StringRef(CPU_MODEL_BC,strlen(CPU_MODEL_BC)));
     Linker::linkModules(M, parseIR(*Buffer, error, M.getContext()));
   }
 };
