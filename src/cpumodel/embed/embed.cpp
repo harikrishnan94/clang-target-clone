@@ -4,11 +4,7 @@
 
 using Chunk = std::array<std::uint8_t, 10>;
 
-auto read_chunk(std::ifstream &f, Chunk &chunk) -> std::size_t {
-  return f.readsome(reinterpret_cast<char *>(chunk.data()), chunk.size());
-}
-
-constexpr std::array ASCII_NUM = {
+const char *ASCII_NUM[] = {
     "(char) 0x0",  "(char) 0x1",  "(char) 0x2",  "(char) 0x3",  "(char) 0x4",  "(char) 0x5",
     "(char) 0x6",  "(char) 0x7",  "(char) 0x8",  "(char) 0x9",  "(char) 0xA",  "(char) 0xB",
     "(char) 0xC",  "(char) 0xD",  "(char) 0xE",  "(char) 0xF",  "(char) 0x10", "(char) 0x11",
@@ -53,7 +49,11 @@ constexpr std::array ASCII_NUM = {
     "(char) 0xF6", "(char) 0xF7", "(char) 0xF8", "(char) 0xF9", "(char) 0xFA", "(char) 0xFB",
     "(char) 0xFC", "(char) 0xFD", "(char) 0xFE", "(char) 0xFF"};
 
-void write_chunk(std::ofstream &f, Chunk &chunk, std::size_t size) {
+static auto read_chunk(std::ifstream &f, Chunk &chunk) -> std::size_t {
+  return f.readsome(reinterpret_cast<char *>(chunk.data()), chunk.size());
+}
+
+static void write_chunk(std::ofstream &f, Chunk &chunk, std::size_t size) {
   for (std::size_t i = 0; i < size; i++) {
     auto c = chunk[i];
     f << ASCII_NUM[c] << ","; // NOLINT

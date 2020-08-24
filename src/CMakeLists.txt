@@ -1,6 +1,6 @@
 find_package(LLVM 8 REQUIRED)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 
 add_subdirectory(cpumodel)
 
