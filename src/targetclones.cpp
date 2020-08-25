@@ -1,6 +1,7 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -247,15 +248,26 @@ private:
       Args.push_back(&cast<Value>(Arg));
     }
 
+    auto DL = [&]() -> Optional<DebugLoc> {
+      auto *Scope = F.getSubprogram();
+      if (Scope != nullptr)
+        return DebugLoc::get(Scope->getLine(), 0, Scope, nullptr, true);
+      return None;
+    }();
     auto CallVariant = [&](Function *Func) {
-      if (F.getReturnType()->isVoidTy()) {
-        Builder.CreateCall(Func, Args);
-        Builder.CreateRetVoid();
-      } else {
+      auto *CallInst = [&] {
+        if (F.getReturnType()->isVoidTy()) {
+          auto *CallInst = Builder.CreateCall(Func, Args);
+          Builder.CreateRetVoid();
+          return CallInst;
+        }
         auto *Ret = Builder.CreateCall(Func, Args);
         Ret->setTailCallKind(CallInst::TCK_Tail);
         Builder.CreateRet(Ret);
-      }
+        return Ret;
+      }();
+      if (DL)
+        CallInst->setDebugLoc(*DL);
     };
 
     for (auto &&TargetFunction : TargetFunctions) {
