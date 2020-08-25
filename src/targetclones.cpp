@@ -35,20 +35,17 @@ const StringRef TARGET_CLONE = TARGET_CLONE_ANNOTATION;
 #endif
 
 enum class Vendor : unsigned {
-// NOLINTNEXTLINE
 #define X86_VENDOR(ENUM, STRING) ENUM,
 #include <llvm/Support/X86TargetParser.def>
 };
 
 enum class CPU : unsigned {
-// NOLINTNEXTLINE
 #define X86_CPU_TYPE(ARCHNAME, ENUM) ENUM,
 #include <llvm/Support/X86TargetParser.def>
 };
 
 enum class TargetID : unsigned {
   DUMMY, // Enum Value Cannot be 0. Required by `emitX86CpuIs`.
-// NOLINTNEXTLINE
 #define X86_CPU_SUBTYPE_COMPAT(ARCHNAME, ENUM, STR) ENUM,
 #include <llvm/Support/X86TargetParser.def>
 };
@@ -59,7 +56,6 @@ struct Target {
 };
 
 const Target TARGETS[] = {
-// NOLINTNEXTLINE
 #define X86_CPU_SUBTYPE_COMPAT(ARCHNAME, ENUM, STR) Target{TargetID::ENUM, STR},
 #include <llvm/Support/X86TargetParser.def>
 };
@@ -71,21 +67,44 @@ const char CPU_MODEL_BC[] = {
 constexpr auto NUM_TARGETS = sizeof(CPU_MODEL_BC) / sizeof(CPU_MODEL_BC[0]);
 const StringRef TARGET_CPU = "target-cpu";
 const StringRef TARGET_FEATURES = "target-features";
-constexpr auto TYPICAL_FEATURE_COUNT = 32;
-constexpr auto TYPICAL_FEATURES_LEN = 512;
-constexpr auto TEMP_STR_LEN = 128;
 
-using TargetFunctionPair = std::pair<std::reference_wrapper<const Target>, Function *>;
+struct TargetFunctionPair {
+  std::reference_wrapper<const Target> Targt;
+  Function *Func;
 
-constexpr auto is64Bit(TargetID ID) -> bool {
+  friend bool operator>(const TargetFunctionPair &TF1, const TargetFunctionPair &TF2) noexcept {
+    return TF1.Targt.get().ID > TF2.Targt.get().ID;
+  }
+};
+
+constexpr auto needsVersioning(TargetID ID) -> bool {
   switch (ID) {
+  case TargetID::INTEL_COREI7_HASWELL:
+  case TargetID::INTEL_COREI7_SKYLAKE_AVX512:
+    return true;
+
+  case TargetID::DUMMY:
+  case TargetID::INTEL_COREI7_NEHALEM:
+  case TargetID::INTEL_COREI7_WESTMERE:
+  case TargetID::INTEL_COREI7_SANDYBRIDGE:
   case TargetID::AMDFAM10H_BARCELONA:
   case TargetID::AMDFAM10H_SHANGHAI:
   case TargetID::AMDFAM10H_ISTANBUL:
+  case TargetID::AMDFAM15H_BDVER1:
+  case TargetID::AMDFAM15H_BDVER2:
+  case TargetID::AMDFAM15H_BDVER3:
+  case TargetID::AMDFAM15H_BDVER4:
+  case TargetID::AMDFAM17H_ZNVER1:
+  case TargetID::INTEL_COREI7_IVYBRIDGE:
+  case TargetID::INTEL_COREI7_BROADWELL:
+  case TargetID::INTEL_COREI7_SKYLAKE:
+  case TargetID::INTEL_COREI7_CANNONLAKE:
+  case TargetID::INTEL_COREI7_ICELAKE_CLIENT:
+  case TargetID::INTEL_COREI7_ICELAKE_SERVER:
     return false;
-  default:
-    return true;
   }
+
+  llvm_unreachable("cannot reach here");
 }
 
 #ifndef NDEBUG
@@ -102,15 +121,18 @@ public:
   TargetClone() : ModulePass(ID) {}
 
   auto runOnModule(Module &M) -> bool override {
-    injectCpuModelUtils(M);
-
     auto ClonableFunctions = getClonableFunctions(M);
+
+    if (ClonableFunctions.empty())
+      return false;
+
+    injectCpuModelUtils(M);
     for (auto *F : ClonableFunctions) {
       SmallVector<TargetFunctionPair, NUM_TARGETS> TargetFunctions;
 
       for (const auto &Target : TARGETS) {
-        if (is64Bit(Target.ID)) {
-          auto &Cloned = cloneFunction(*F, (Target.Name));
+        if (needsVersioning(Target.ID)) {
+          auto &Cloned = cloneFunction(*F, Target.Name);
           addTargetAttribute(Cloned, Target);
           TargetFunctions.push_back({Target, &Cloned});
         }
@@ -123,11 +145,12 @@ public:
 #ifndef NDEBUG
     verifyModule(M, &errs());
 #endif
-    return !ClonableFunctions.empty();
+    return true;
   }
 
 private:
-  static void dispatchTargetFunctions(Function &F, ArrayRef<TargetFunctionPair> TargetFunctions,
+  static void dispatchTargetFunctions(Function &F,
+                                      SmallVectorImpl<TargetFunctionPair> &TargetFunctions,
                                       Function &Default) {
     for (auto BB = F.begin(); BB != F.end();) {
       BB = BB->eraseFromParent();
@@ -138,20 +161,22 @@ private:
     auto *BB = BasicBlock::Create(C, "entry", &F);
     Builder.SetInsertPoint(BB);
 
+    // Sort TargetFunctions by reverse order based on Target
+    std::sort(TargetFunctions.begin(), TargetFunctions.end(), std::greater<>());
     emitMultiVersionResolver(F, Builder, TargetFunctions, Default);
   }
 
   static void addTargetAttribute(Function &F, const Target &T) {
     auto Attrs = F.getAttributes().getFnAttributes();
     auto &C = F.getContext();
-    Attrs = Attrs.removeAttribute(C, (TARGET_CPU)).addAttribute(C, (TARGET_CPU), (T.Name));
+    Attrs = Attrs.removeAttribute(C, TARGET_CPU).addAttribute(C, TARGET_CPU, T.Name);
     F.setAttributes(F.getAttributes().addAttributes(C, AttributeList::FunctionIndex, Attrs));
 
-    SmallSet<StringRef, TYPICAL_FEATURE_COUNT> Features;
+    SmallSet<StringRef, 32> Features;
 
     // Add features present already
-    SmallVector<StringRef, TYPICAL_FEATURE_COUNT> FeaturesVec;
-    Attrs.getAttribute((TARGET_FEATURES)).getValueAsString().split(FeaturesVec, ",", -1, false);
+    SmallVector<StringRef, 32> FeaturesVec;
+    Attrs.getAttribute(TARGET_FEATURES).getValueAsString().split(FeaturesVec, ",", -1, false);
     Features.insert(FeaturesVec.begin(), FeaturesVec.end());
 
     // Add features from Target
@@ -160,7 +185,7 @@ private:
     Features.insert(FeaturesVec.begin(), FeaturesVec.end());
 
     // Concat all feature strings and add to Attributes
-    SmallString<TYPICAL_FEATURES_LEN> TargetFeatures;
+    SmallString<512> TargetFeatures;
     for (const auto &F : Features) {
       TargetFeatures += F;
       TargetFeatures += ",";
@@ -168,14 +193,14 @@ private:
     // Pop trailing ','
     TargetFeatures.pop_back();
 
-    Attrs = Attrs.removeAttribute(C, (TARGET_FEATURES))
-                .addAttribute(C, (TARGET_FEATURES), TargetFeatures);
+    Attrs =
+        Attrs.removeAttribute(C, TARGET_FEATURES).addAttribute(C, TARGET_FEATURES, TargetFeatures);
     F.setAttributes(F.getAttributes().addAttributes(C, AttributeList::FunctionIndex, Attrs));
   }
 
   static auto cloneFunction(Function &Src, StringRef Suffix) -> Function & {
     auto *M = Src.getParent();
-    SmallString<TEMP_STR_LEN> Name = Src.getName();
+    SmallString<128> Name = Src.getName();
     auto *Type = Src.getFunctionType();
     auto Attrs = Src.getAttributes();
     auto &Dst = *cast<Function>(M->getOrInsertFunction((Name += ".") += Suffix, Type, Attrs));
@@ -205,7 +230,7 @@ private:
         if (auto *F = dyn_cast<Function>(e->getOperand(0)->getOperand(0))) {
           auto *Anno = cast<ConstantDataArray>(
               cast<GlobalVariable>(e->getOperand(1)->getOperand(0))->getOperand(0));
-          if (Anno->getRawDataValues().startswith((TARGET_CLONE)))
+          if (Anno->getRawDataValues().startswith(TARGET_CLONE))
             Functions.insert(F);
         }
       }
@@ -217,7 +242,7 @@ private:
   static void emitMultiVersionResolver(Function &F, IRBuilder<> &Builder,
                                        ArrayRef<TargetFunctionPair> TargetFunctions,
                                        Function &Default) {
-    SmallVector<Value *, 10> Args; // NOLINT
+    SmallVector<Value *, 10> Args;
     for (auto &&Arg : F.args()) {
       Args.push_back(&cast<Value>(Arg));
     }
@@ -234,15 +259,15 @@ private:
     };
 
     for (auto &&TargetFunction : TargetFunctions) {
-      auto &Cond = emitX86CpuIs(*F.getParent(), Builder, TargetFunction.first.get().Name);
+      auto &Cond = emitX86IsCpuCompat(*F.getParent(), Builder, TargetFunction.Targt.get().Name);
       auto *Call =
-          BasicBlock::Create(F.getContext(), (TargetFunction.first.get().Name) + ".call", &F);
+          BasicBlock::Create(F.getContext(), (TargetFunction.Targt.get().Name) + ".call", &F);
       auto *Cont = BasicBlock::Create(F.getContext(), "cont", &F);
 
       Builder.CreateCondBr(&Cond, Call, Cont);
 
       Builder.SetInsertPoint(Call);
-      CallVariant(TargetFunction.second);
+      CallVariant(TargetFunction.Func);
 
       Builder.SetInsertPoint(Cont);
     }
@@ -300,7 +325,6 @@ private:
 
   static void getCPUSpecificFeatures(StringRef Name, SmallVectorImpl<StringRef> &Features) {
     StringRef WholeList = StringSwitch<StringRef>(cpuSpecificNameDealias(Name))
-    // NOLINTNEXTLINE
 #define CPU_SPECIFIC(NAME, MANGLING, FEATURES) .Case(NAME, FEATURES)
 #include "X86Target.def"
                               .Default("");
@@ -308,33 +332,28 @@ private:
   }
 
   static auto cpuSpecificNameDealias(StringRef Name) -> StringRef {
-    return StringSwitch<StringRef>((Name))
-    // NOLINTNEXTLINE
+    return StringSwitch<StringRef>(Name)
 #define CPU_SPECIFIC_ALIAS(NEW_NAME, NAME) .Case(NEW_NAME, NAME)
 #include "X86Target.def"
-        .Default((Name));
+        .Default(Name);
   }
 
-  static auto emitX86CpuIs(Module &M, IRBuilder<> &Builder, StringRef CPUStr) -> Value & {
+  static auto emitX86IsCpuCompat(Module &M, IRBuilder<> &Builder, StringRef CPUStr) -> Value & {
     // Calculate the index needed to access the correct field based on the
     // range. Also adjust the expected value.
     unsigned Index;
     unsigned Value;
-    std::tie(Index, Value) = StringSwitch<std::pair<unsigned, unsigned>>((CPUStr))
+    std::tie(Index, Value) = StringSwitch<std::pair<unsigned, unsigned>>(CPUStr)
 
-// NOLINTNEXTLINE
 #define X86_VENDOR(ENUM, STRING) .Case(STRING, {0u, static_cast<unsigned>(Vendor::ENUM)})
-// NOLINTNEXTLINE
 #define X86_CPU_TYPE_COMPAT_WITH_ALIAS(ARCHNAME, ENUM, STR, ALIAS)                                 \
   .Cases(STR, ALIAS, {1u, static_cast<unsigned>(CPU::ENUM)})
-// NOLINTNEXTLINE
 #define X86_CPU_TYPE_COMPAT(ARCHNAME, ENUM, STR) .Case(STR, {1u, static_cast<unsigned>(CPU::ENUM)})
-// NOLINTNEXTLINE
 #define X86_CPU_SUBTYPE_COMPAT(ARCHNAME, ENUM, STR)                                                \
   .Case(STR, {2u, static_cast<unsigned>(TargetID::ENUM)})
 #include <llvm/Support/X86TargetParser.def>
                                  .Default({0, 0});
-    assert(Value != 0 && "Invalid CPUStr passed to CpuIs");
+    assert(Value != 0 && "Invalid CPUStr passed to IsCpuCompat");
 
     // Grab the appropriate field from __cpu_model.
     auto &CpuModel = getCpuModel(M);
@@ -346,25 +365,26 @@ private:
     CpuValue = Builder.CreateAlignedLoad(CpuValue, 4);
 
     // Check the value of the field against the requested value.
-    return *Builder.CreateICmpEQ(CpuValue, ConstantInt::get(Int32Ty, Value));
+    return *Builder.CreateICmpUGE(CpuValue, ConstantInt::get(Int32Ty, Value), CPUStr + ".check");
   }
 
   static void injectCpuModelUtils(Module &M) {
     SMDiagnostic error;
     auto Buffer = MemoryBuffer::getMemBuffer({CPU_MODEL_BC, sizeof(CPU_MODEL_BC)});
-    Linker::linkModules(M, parseIR(*Buffer, error, M.getContext()));
+    auto CpuModelModule = parseIR(*Buffer, error, M.getContext());
+    if (!CpuModelModule) {
+      error.print("cpumodel.bc", errs());
+      std::terminate();
+    }
+    Linker::linkModules(M, std::move(CpuModelModule));
   }
 };
 
 char TargetClone::ID = 0;
 } // namespace
 
-// NOLINTNEXTLINE
 static RegisterPass<TargetClone> X("target-clone", "Target Clone Pass");
 
-// NOLINTNEXTLINE
 static RegisterStandardPasses Y(PassManagerBuilder::EP_ModuleOptimizerEarly,
                                 [](const PassManagerBuilder & /*Builder*/,
-                                   legacy::PassManagerBase &PM) {
-                                  PM.add(new TargetClone()); // NOLINT
-                                });
+                                   legacy::PassManagerBase &PM) { PM.add(new TargetClone()); });
